@@ -1,0 +1,20 @@
+{
+  "userInfo": {
+    "email": "jochy07c@gmail.com",
+    "password": "Florida1.",
+    "firstName": "jochy",
+    "lastName": "delomio",
+    "city": "jersey city",
+    "state": "nj",
+    "zipcode": "07307",
+    "ccn": "",
+    "ccExp": "",
+    "ccCvc": "199"
+  },
+  "appConfig": {
+    "preferredSize": "8.5",
+    "numConcurrentTasks": 3,
+    "stopEarly": true,
+    "gender": "m"
+  }
+}
