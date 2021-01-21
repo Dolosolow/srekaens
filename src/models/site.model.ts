@@ -9,6 +9,7 @@ export default class Order {
   private selectedSize: KSizes | null = null;
   private control: puppeteer.Page;
   private config: IData;
+  private isTestRun: boolean;
 
   private url: string;
   private loginUrl: string =
@@ -41,14 +42,16 @@ export default class Order {
     );
   };
 
-  launch = async () => {
-    logger('receiving profile');
+  launch = async (runTest: boolean = true) => {
+    logger(`${runTest ? 'Starting test run' : 'Here to serve up a nice "Got\'em"'}`);
+    logger('Receiving profile');
 
     try {
-      logger('...setting up configurations');
+      logger('Setting up configurations...');
 
       const results = await this.getConfiguration();
       this.config = results;
+      this.isTestRun = runTest;
       await this.launchBrowser();
     } catch (err) {
       console.log(err);
@@ -58,11 +61,11 @@ export default class Order {
   login = async () => {
     const { email, password } = this.config.userInfo;
     try {
-      logger('Preparing to login with the given credentials');
+      logger('Preparing to login with the given credentials...');
 
       await this.control.goto(this.loginUrl, { waitUntil: 'networkidle2' });
 
-      logger('...signing in');
+      logger('signing in...');
 
       await this.control.evaluate(
         ({ email, pwd }) => {
@@ -71,8 +74,6 @@ export default class Order {
         },
         { email, pwd: password }
       );
-
-      logger('finished typing acct info');
 
       await this.control.waitForSelector('input[type=button]');
       const [signinBtn] = await this.control.$$('input[type=button]');
@@ -122,13 +123,14 @@ export default class Order {
   };
 
   private selectSizes = async () => {
-    logger('validating size....');
+    logger('Validating size....');
 
     this.selectedSize = this.config.appConfig.preferredSize;
+    await this.control.waitForXPath(`//button[contains(text(), "${this.selectedSize}")]`);
     const sizebtn = await this.control.$x(`//button[contains(text(), "${this.selectedSize}")]`);
     const gender = this.genderSize(sizebtn);
 
-    logger(`...attempting to add a size ${this.config.appConfig.gender}${this.selectedSize}`);
+    logger(`Attempting to add a size ${this.config.appConfig.gender}${this.selectedSize}...`);
 
     this.triggerSizeSelection(sizebtn[gender]);
   };
@@ -149,12 +151,12 @@ export default class Order {
   };
 
   private addItemToCart = async () => {
-    logger('...Adding item to cart');
+    logger('Adding item to cart...');
     await this.control.waitForSelector('button[data-qa="add-to-cart"]');
     const [cartBtn] = await this.control.$$('button[data-qa="add-to-cart"]');
     await cartBtn.click();
     logger('Item added successfully');
-    logger('...proceeding to checkout');
+    logger('Proceeding to checkout...');
     await this.naviageToCheckout();
   };
 
@@ -164,7 +166,7 @@ export default class Order {
   };
 
   private loadCheckoutFrame = async (): Promise<puppeteer.Frame | null> => {
-    logger('waiting for iframe to load form content');
+    logger('Waiting for iframe to load form content...');
 
     const frame = await this.control.waitForSelector('iframe');
     const frameContent = await frame.contentFrame();
@@ -175,16 +177,54 @@ export default class Order {
   };
 
   private completeCheckout = async () => {
+    logger('At checkout');
+    await this.filloutCvc();
+    await this.getOrderReview();
+  };
+
+  private filloutCvc = async () => {
     const { ccCvc } = this.config.userInfo;
     try {
       logger('Completing cc-information');
       const frame = await this.loadCheckoutFrame();
-      await frame?.$eval('input[id="cvNumber"]', (elm: any, ccCvc) => (elm.value = ccCvc), ccCvc);
-      logger('Completing order');
+      await frame?.type('input[id="cvNumber"]', ccCvc);
+      logger('cc-information added');
     } catch (err) {
-      logger('frame was not loaded properly');
-      const frame = await this.loadCheckoutFrame();
-      await frame?.$eval('input[id="cvNumber"]', (elm: any, ccCvc) => (elm.value = ccCvc), ccCvc);
+      logger('Frame was not loaded properly');
+      await this.filloutCvc();
     }
+  };
+
+  private getOrderReview = async () => {
+    logger('Clicking order review');
+    await this.control.waitForSelector('button[data-attr="continueToOrderReviewBtn"]');
+    const [cartBtn] = await this.control.$$('button[data-attr="continueToOrderReviewBtn"]');
+    await cartBtn.click();
+    if (!this.isTestRun) {
+      logger('Finalizing order....');
+      await this.finishOrder();
+      this.printReceipt();
+    } else {
+      logger('👨🏽‍🔬 This was a test run. So the task ends here. 👨🏽‍🔬');
+      this.printReceipt();
+    }
+  };
+
+  private finishOrder = async () => {
+    await this.control.waitForXPath(`//button[contains(text(), "Place Order")]`);
+    const [orderBtn] = await this.control.$x(`//button[contains(text(), "Place Order")]`);
+    await orderBtn.click();
+    logger("👟👟 YOU GOT EM'..... SKIKE lol 👟👟");
+  };
+
+  private printReceipt = () => {
+    logger('Saving a screenshot of receipt');
+    setTimeout(async () => {
+      if (this.isTestRun) {
+        await this.control.screenshot({ fullPage: true, path: 'fake_run.png' });
+      } else {
+        this.control.screenshot({ fullPage: true, path: 'order.png' });
+      }
+    }, 1000);
   };
 }
