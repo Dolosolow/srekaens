@@ -1,15 +1,20 @@
 import puppeteer from 'puppeteer';
-import fs from 'fs';
-import path from 'path';
+import moment from 'moment';
+// ** FOR DEVELOPMENT ONLY **
+// import util from 'util';
+// import fs from 'fs';
 
-import { KSizes, IData } from '../types/shared.types';
-import { logger } from '../utils/index.util';
+import { IData } from '../types/shared.types';
+import { logger, getData, printbrand, printSuccess } from '../utils/index.util';
 
 export default class Order {
-  private selectedSize: KSizes | null = null;
+  private selectedSize: string | undefined = undefined;
   private control: puppeteer.Page;
   private config: IData;
   private isTestRun: boolean;
+  // ** FOR DEVELOPMENT ONLY **
+  // private fileReqId: number = 0;
+  // private fileResId: number = 0;
 
   private url: string;
   private loginUrl: string =
@@ -19,39 +24,63 @@ export default class Order {
     this.url = url;
   }
 
-  private getConfiguration = (): Promise<IData> => {
-    return new Promise((resolve, reject) => {
-      const profilePath = path.join(__dirname, '../data/profile.json');
-      fs.readFile(profilePath, (err, data) => {
-        if (!err) {
-          const profileData: IData = JSON.parse(data.toString());
-          resolve(profileData);
-        } else {
-          reject(err);
-        }
-      });
-    });
-  };
-
   private launchBrowser = async () => {
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch({
+      headless: false,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--enable-automation',
+        '--disable-accelerated-2d-canvas',
+      ],
+    });
     this.control = await browser.newPage();
     await this.control.setViewport({ width: 1300, height: 800 });
-    await this.control.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36'
-    );
+
+    await this.control.setRequestInterception(true);
+
+    this.control.on('request', (req) => {
+      if (
+        req.resourceType() === 'stylesheet' ||
+        req.resourceType() === 'font' ||
+        req.resourceType() === 'image'
+      ) {
+        req.abort();
+      } else {
+        const showLogs = process.env.REQLOG === 'y';
+        if (showLogs) {
+          console.log(req.method());
+          console.log(req.headers());
+        }
+        // ** FOR DEVELOPMENT ONLY **
+        // fs.writeFileSync(`x_requests/req.${this.fileReqId}-${req.method()}.txt`, util.inspect(req));
+        // this.fileReqId++;
+        req.continue();
+      }
+    });
+
+    // ** FOR DEVELOPMENT ONLY **
+    // this.control.on('response', (res) => {
+    //   fs.writeFileSync(`x_response/res.${this.fileResId}-s${res.status()}.txt`, util.inspect(res));
+    //   this.fileResId++;
+    // });
   };
 
   launch = async (runTest: boolean = true) => {
+    printbrand();
     logger(`${runTest ? 'Starting test run' : 'Here to serve up a nice "Got\'em"'}`);
     logger('Receiving profile');
+    logger(`Making an order for a size ${process.env.SIZE}`);
 
     try {
       logger('Setting up configurations...');
 
-      const results = await this.getConfiguration();
+      const results = await getData();
       this.config = results;
       this.isTestRun = runTest;
+
       await this.launchBrowser();
     } catch (err) {
       console.log(err);
@@ -59,25 +88,19 @@ export default class Order {
   };
 
   login = async () => {
-    const { email, password } = this.config.userInfo;
     try {
-      logger('Preparing to login with the given credentials...');
+      logger('Preparing to login with credentials...');
 
       await this.control.goto(this.loginUrl, { waitUntil: 'networkidle2' });
 
       logger('signing in...');
 
-      await this.control.evaluate(
-        ({ email, pwd }) => {
-          document.querySelector<HTMLInputElement>('input[name="emailAddress"]')!.value = email;
-          document.querySelector<HTMLInputElement>('input[name="password"]')!.value = pwd;
-        },
-        { email, pwd: password }
-      );
+      await this.control.type('input[name="emailAddress"]', 'jochy07c@gmail.com', { delay: 100 });
+      await this.control.type('input[name="password"]', 'Florida1.', { delay: 100 });
 
       await this.control.waitForSelector('input[type=button]');
       const [signinBtn] = await this.control.$$('input[type=button]');
-      await signinBtn.click();
+      await signinBtn.click({ delay: 100 });
       await this.isLoggedIn();
     } catch (err) {
       console.log(err);
@@ -92,13 +115,21 @@ export default class Order {
       logger('Failed to login...\nMaking another attempt to login');
       await this.login();
     } catch (err) {
-      console.log('Login Successful');
+      console.log('Login Successful\n');
     }
   };
 
-  startTask = async () => {
-    try {
+  startTask = async (scheduled: boolean, time: string) => {
+    if (scheduled && time) {
+      this.scheduleRun(time, this.beginOrder);
+    } else {
       await this.beginOrder();
+    }
+  };
+
+  private beginOrder = async () => {
+    try {
+      await this.navigateToTarget();
       await this.selectSizes();
       await this.addItemToCart();
     } catch (err) {
@@ -106,8 +137,31 @@ export default class Order {
     }
   };
 
-  private beginOrder = async () => {
-    await this.control.goto(this.url, { waitUntil: 'networkidle2' });
+  private scheduleRun = (time: string, cb: any): void => {
+    let timerId: any;
+    let currentTime;
+
+    const stoptimer = () => {
+      logger('stopping timer');
+      clearInterval(timerId);
+    };
+
+    timerId = setInterval(() => {
+      currentTime = moment().format('LTS');
+      console.log(
+        `time remaining: ${moment
+          .utc(moment(`${time}:00 AM`, 'h:mm:ss A').diff(moment(currentTime, 'h:mm:ss A')))
+          .format('mm:ss')}`
+      );
+      if (currentTime === `${time}:00 AM`) {
+        cb();
+        stoptimer();
+      }
+    }, 350);
+  };
+
+  private navigateToTarget = async () => {
+    await this.control.goto(this.url, { waitUntil: 'networkidle0' });
   };
 
   private genderSize = (buttons: any[]) => {
@@ -123,30 +177,20 @@ export default class Order {
   };
 
   private selectSizes = async () => {
-    logger('Validating size....');
+    try {
+      logger('Validating size....');
 
-    this.selectedSize = this.config.appConfig.preferredSize;
-    await this.control.waitForXPath(`//button[contains(text(), "${this.selectedSize}")]`);
-    const sizebtn = await this.control.$x(`//button[contains(text(), "${this.selectedSize}")]`);
-    const gender = this.genderSize(sizebtn);
+      this.selectedSize = process.env.SIZE;
+      await this.control.waitForXPath(`//button[contains(text(), "${this.selectedSize}")]`);
+      const sizebtn = await this.control.$x(`//button[contains(text(), "${this.selectedSize}")]`);
+      const gender = this.genderSize(sizebtn);
 
-    logger(`Attempting to add a size ${this.config.appConfig.gender}${this.selectedSize}...`);
+      logger(`Attempting to add a size ${this.config.appConfig.gender}${this.selectedSize}...`);
 
-    this.triggerSizeSelection(sizebtn[gender]);
-  };
-
-  private triggerSizeSelection = async (sizeBtn: puppeteer.ElementHandle<Element>) => {
-    if (sizeBtn) {
-      const [availability] = await sizeBtn.$x('..');
-      const elm: string = (await (
-        await availability.getProperty('className')
-      ).jsonValue()) as string;
-
-      logger(`Availability: ${elm.includes('disabled') ? 'sold_out' : 'available'}`);
-
-      if (!elm.includes('disabled')) {
-        await sizeBtn.click();
-      }
+      await sizebtn[gender].click();
+    } catch (err) {
+      logger('...trying again to select size smh');
+      await this.selectSizes();
     }
   };
 
@@ -161,7 +205,7 @@ export default class Order {
   };
 
   private naviageToCheckout = async () => {
-    await this.control.goto('https://www.nike.com/checkout', { waitUntil: 'networkidle2' });
+    await this.control.goto('https://www.nike.com/checkout', { waitUntil: 'networkidle0' });
     await this.completeCheckout();
   };
 
@@ -214,7 +258,6 @@ export default class Order {
     await this.control.waitForXPath(`//button[contains(text(), "Place Order")]`);
     const [orderBtn] = await this.control.$x(`//button[contains(text(), "Place Order")]`);
     await orderBtn.click();
-    logger("👟👟 YOU GOT EM'..... SKIKE lol 👟👟");
   };
 
   private printReceipt = () => {
@@ -222,9 +265,11 @@ export default class Order {
     setTimeout(async () => {
       if (this.isTestRun) {
         await this.control.screenshot({ fullPage: true, path: 'fake_run.png' });
+        printSuccess();
       } else {
-        this.control.screenshot({ fullPage: true, path: 'order.png' });
+        await this.control.screenshot({ fullPage: true, path: 'order.png' });
+        printSuccess();
       }
-    }, 1000);
+    }, 2000);
   };
 }

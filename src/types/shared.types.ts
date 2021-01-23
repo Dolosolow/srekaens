@@ -14,6 +14,19 @@ export type KSizes =
 
 export type Gender = 'm' | 'f';
 
+export type UserProfile = {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+  ccn?: string;
+  ccExp?: string;
+  ccCvc?: string;
+};
+
 export interface IData {
   userInfo: {
     email: string;

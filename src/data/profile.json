@@ -9,12 +9,9 @@
     "zipcode": "07307",
     "ccn": "",
     "ccExp": "",
-    "ccCvc": "199"
+    "ccCvc": "300"
   },
   "appConfig": {
-    "preferredSize": "8.5",
-    "numConcurrentTasks": 3,
-    "stopEarly": true,
     "gender": "m"
   }
 }
