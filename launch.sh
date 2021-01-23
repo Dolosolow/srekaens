@@ -183,7 +183,7 @@ function checkForWantedChanges() {
 }
 
 function runscript() {
-    URL=${URL} REQLOG=${REQLOG} SANDBOX=${SANDBOX} SCHEDULED=${SSCHDULE} TIME=${STIME} SIZE=${SIZE} npm start
+    URL=${URL} REQLOG=${REQLOG} SANDBOX=${SANDBOX} SCHEDULED=${SSCHDULE} TIME=${STIME} SIZE=${SIZE} npm run start:server
 }
 
 # -------------------------------------
