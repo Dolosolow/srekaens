@@ -116,6 +116,7 @@ export default class Order {
       await this.login();
     } catch (err) {
       console.log('Login Successful\n');
+      await this.control.goto(this.url, { waitUntil: 'networkidle2' });
     }
   };
 
@@ -161,7 +162,7 @@ export default class Order {
   };
 
   private navigateToTarget = async () => {
-    await this.control.goto(this.url, { waitUntil: 'networkidle0' });
+    await this.control.reload({ waitUntil: 'networkidle0' });
   };
 
   private genderSize = (buttons: any[]) => {
